@@ -12,6 +12,7 @@ pool:
 variables:
   artifactName: sitio-web-student-02
 
+
 stages:
 - stage: CI
   displayName: Integración continua
