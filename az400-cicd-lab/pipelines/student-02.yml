@@ -1,0 +1,112 @@
+trigger:
+  batch: true
+  branches:
+    include:
+    - feature/student-02
+
+pr: none
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  artifactName: sitio-web-student-02
+
+stages:
+- stage: CI
+  displayName: Integración continua
+  jobs:
+  - job: ValidateAndPackage
+    displayName: Validar y empaquetar
+    steps:
+    - checkout: self
+      clean: true
+
+    - task: Bash@3
+      displayName: Validar estructura y componente
+      inputs:
+        targetType: inline
+        script: |
+          set -euo pipefail
+          
+          # 1. Validar archivos obligatorios
+          required_files=(
+            "site/index.html"
+            "site/css/styles.css"
+            "site/js/app.js"
+            "site/components/student-02.html"
+          )
+          
+          echo "Verificando archivos obligatorios..."
+          for file in "${required_files[@]}"; do
+            if [ ! -s "$file" ]; then
+              echo "##vso[task.logissue type=error]ERROR: No existe o está vacío: $file"
+              exit 1
+            fi
+            echo "Correcto: $file"
+          done
+          
+          # 2. Validar tu componente específico student-02
+          echo "Verificando el componente student-02..."
+          comp="site/components/student-02.html"
+          
+          # Validar que exista un solo <article>
+          article_count=$(grep -io "<article>" "$comp" | wc -l || true)
+          if [ "$article_count" -ne 1 ]; then
+            echo "##vso[task.logissue type=error]ERROR: Se encontraron varios elementos article o ninguno."
+            exit 1
+          fi
+          
+          # Validar las demás etiquetas obligatorias
+          grep -qi "</article>" "$comp" || {
+            echo "##vso[task.logissue type=error]ERROR: El componente no contiene el cierre </article>."
+            exit 1
+          }
+          grep -qi "<h2>" "$comp" || {
+            echo "##vso[task.logissue type=error]ERROR: El componente no contiene un título <h2>."
+            exit 1
+          }
+          grep -qi "</h2>" "$comp" || {
+            echo "##vso[task.logissue type=error]ERROR: El componente no contiene el cierre </h2>."
+            exit 1
+          }
+          grep -qi "<p>" "$comp" || {
+            echo "##vso[task.logissue type=error]ERROR: El componente no contiene al menos un párrafo <p>."
+            exit 1
+          }
+          grep -qi "student-02" "$comp" || {
+            echo "##vso[task.logissue type=error]ERROR: El identificador no corresponde al estudiante student-02."
+            exit 1
+          }
+          
+          # Validar que NO exista la etiqueta <script>
+          if grep -qi "<script>" "$comp"; then
+            echo "##vso[task.logissue type=error]ERROR: El componente contiene una etiqueta script."
+            exit 1
+          fi
+          
+          echo "Validación completada correctamente."
+
+    - task: CopyFiles@2
+      displayName: Preparar archivos del sitio
+      inputs:
+        SourceFolder: $(Build.SourcesDirectory)/site
+        Contents: |
+          index.html
+          css/**
+          js/**
+          components/**
+        TargetFolder: $(Build.ArtifactStagingDirectory)/site
+
+    - task: ArchiveFiles@2
+      displayName: Crear paquete ZIP
+      inputs:
+        rootFolderOrFile: $(Build.ArtifactStagingDirectory)/site
+        includeRootFolder: false
+        archiveType: zip
+        archiveFile: $(Build.ArtifactStagingDirectory)/$(artifactName).zip
+        replaceExistingArchive: true
+
+    - publish: $(Build.ArtifactStagingDirectory)/$(artifactName).zip
+      displayName: Publicar artefacto
+      artifact: $(artifactName)
